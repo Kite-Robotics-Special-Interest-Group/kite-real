@@ -1,4 +1,4 @@
-# kite-real
+﻿# kite-real
 
 > 真机 VLA 研究：数据采集、微调，以及**用输入扰动预测真机失败**。
 
@@ -35,8 +35,15 @@ src/kite_real/
 docs/
   design.md       # 假设、指标、实验设计、可证伪条件
   protocol.md     # 真机采集与评测协议（安全 / 标定 / 频率 / 日志）
-  roadmap.md
+  plan.md         # 团队计划表：分工、里程碑、依赖
+  arm-modeling.md # 机械臂建模所需数据（测量、标定、交付物）
 ```
+
+## 团队分工
+
+见 [`docs/plan.md`](docs/plan.md)：5 人分工、三周里程碑、依赖关系。机械臂建模的数据清单见 [`docs/arm-modeling.md`](docs/arm-modeling.md)。
+
+
 
 ## 快速开始
 
@@ -48,3 +55,4 @@ python -m pytest -q
 ## 许可
 
 MIT，见 [`LICENSE`](LICENSE)。
+
