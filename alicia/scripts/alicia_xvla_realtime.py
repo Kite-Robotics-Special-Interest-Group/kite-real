@@ -32,11 +32,10 @@ if platform.system() == "Windows":
     os.environ.setdefault("MUJOCO_GL", "wgl")
 
 import torch
-from PIL import Image
-from transformers import AutoModel, AutoProcessor
-
 from kite.robot.alicia import load_config, matrix_to_rot6d
 from kite.sim.alicia import AliciaSimEnv
+from PIL import Image
+from transformers import AutoModel, AutoProcessor
 
 DOMAIN_ID = 0
 MODEL_PATH = REPO_ROOT / "weights" / "X-VLA-WidowX"

@@ -2,7 +2,6 @@
 
 import numpy as np
 import pytest
-
 from kite.robot.alicia import (
     DEFAULT_CONFIG_PATH,
     action10_to_sdk_pose,
