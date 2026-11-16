@@ -163,7 +163,9 @@ def _check_urdf(config: dict[str, Any]) -> list[Check]:
     )
 
     mismatches: list[str] = []
-    for name, limits in zip(names, robot["joints"]["limits_rad"]):
+    for name, limits in zip(
+        names, robot["joints"]["limits_rad"], strict=False
+    ):
         joint = joints.get(name)
         if joint is None:
             continue
@@ -600,7 +602,10 @@ def _check_adaptation(config: dict[str, Any]) -> list[Check]:
                     )
                 )
                 else FAIL,
-                f"{path} domain={stored_domain} shape={None if soft_prompt is None else tuple(soft_prompt.shape)}",
+                (
+                    f"{path} domain={stored_domain} "
+                    f"shape={None if soft_prompt is None else tuple(soft_prompt.shape)}"
+                ),
             )
         ]
     except ImportError:
@@ -626,7 +631,6 @@ def _check_sdk_import() -> Check:
 def _check_sim(config: dict[str, Any]) -> list[Check]:
     try:
         import mujoco
-
         from kite.sim.alicia import AliciaSimEnv, build_model
 
         model = build_model(config)

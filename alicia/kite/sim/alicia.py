@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-
 from kite.robot.alicia import (
     REPO_ROOT,
     clamp_action10,
@@ -56,7 +55,9 @@ def build_model(
     spec = mujoco.MjSpec.from_file(str(mjcf_path))
     spec.option.timestep = float(robot["control"]["sim_timestep_s"])
 
-    for name, limits in zip(robot["joints"]["arm"], robot["joints"]["limits_rad"]):
+    for name, limits in zip(
+        robot["joints"]["arm"], robot["joints"]["limits_rad"], strict=False
+    ):
         actuator = spec.add_actuator()
         actuator.name = f"pos_{name}"
         actuator.trntype = mujoco.mjtTrn.mjTRN_JOINT
@@ -69,7 +70,7 @@ def build_model(
 
     travel = float(robot["gripper"]["travel_m"])
     for name, limits in zip(
-        robot["joints"]["gripper"], ([0.0, travel], [-travel, 0.0])
+        robot["joints"]["gripper"], ([0.0, travel], [-travel, 0.0]), strict=False
     ):
         actuator = spec.add_actuator()
         actuator.name = f"pos_{name}"
