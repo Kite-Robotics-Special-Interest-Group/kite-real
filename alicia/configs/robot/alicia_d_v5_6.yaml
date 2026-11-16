@@ -1,0 +1,116 @@
+# Alicia-D v5.6（50 mm 夹爪）真机 / 仿真 / X-VLA 接口约定
+# 资产获取：python scripts/fetch_alicia_assets.py
+robot:
+  name: Alicia_D_v5_6
+  vendor: Synria Robotics
+  sdk:
+    package: alicia_d_sdk
+    version: v5_6
+    variant: gripper_50mm
+    model_format: urdf
+    serial_port: ""
+    min_version: 6.1.0
+  links:
+    base: base_link
+    tcp: tool0
+  joints:
+    arm: [Joint1, Joint2, Joint3, Joint4, Joint5, Joint6]
+    gripper: [left_finger, right_finger]
+    limits_rad:
+      - [-2.749, 2.749]
+      - [-2.0, 2.0]
+      - [-0.5, 3.14159]
+      - [-2.79, 2.79]
+      - [-1.57, 1.57]
+      - [-3.14159, 3.14159]
+  gripper:
+    type: 50mm
+    travel_m: 0.025
+    sdk:
+      range: [0, 1000]
+      open: 1000
+      closed: 0
+    xvla:
+      range: [0.0, 1.0]
+      closed: 1.0
+      open: 0.0
+  workspace_m:
+    x: [0.05, 0.65]
+    y: [-0.35, 0.35]
+    z: [0.02, 0.75]
+  control:
+    rate_hz: 20
+    sim_timestep_s: 0.002
+    sim_substeps: 25
+    max_step_m: 0.03
+    max_yaw_rad: 0.20
+  assets:
+    mjcf: assets/synriard/mjcf/Alicia_D_v5_6/Alicia_D_v5_6_gripper_50mm.xml
+    urdf: assets/synriard/urdf/Alicia_D_v5_6/Alicia_D_v5_6_gripper_50mm.urdf
+    mesh_dir: assets/synriard/meshes/Alicia_D_v5_6/follower_standard
+  cameras:
+    front:
+      role: primary
+      resolution: [224, 224]
+      pos_m: [1.00, -0.85, 0.68]
+      lookat_m: [0.34, 0.0, 0.27]
+      fovy_deg: 48
+    wrist:
+      role: auxiliary
+      parent: link6
+      resolution: [224, 224]
+      pos_m: [0.06, 0.0, 0.0]
+      quat_wxyz: [1.0, 0.0, 0.0, 0.0]
+      fovy_deg: 75
+  scene:
+    home_joint_rad: [0.287, 0.08, 0.975, -0.008, -1.5, 1.126]
+    home_gripper_norm: 0.0
+    table:
+      size_m: [0.28, 0.36, 0.02]
+      pos_m: [0.42, 0.0, 0.20]
+    pedestal:
+      size_m: [0.035, 0.035, 0.03]
+      pos_m: [0.42, 0.10, 0.25]
+    cube:
+      size_m: [0.02, 0.02, 0.02]
+      pos_m: [0.42, 0.10, 0.30]
+
+xvla:
+  checkpoint: weights/X-VLA-WidowX
+  action_mode: ee6d
+  action_dim: 10
+  action_chunk: 30
+  proprio_dim: 20
+  gripper_index: 9
+  domain_id: 0
+  domain_note: Bridge/WidowX domain；Alicia-D 未在该域训练，零样本动作不可信
+  adapted_domain_id: 19
+  adapted_checkpoint: weights/X-VLA-WidowX-alicia/softprompt_domain19.pt
+  image_size: 224
+  views: 3
+  view_order: [front, wrist, zero_pad]
+  normalization: imagenet
+  rot6d: rotation_matrix_columns_0_1_interleaved
+  frame: base_link
+
+data:
+  episode_format: npz
+  fps: 20
+  action_layout: [ee_xyz_m_3, rot6d_6, gripper_norm_1]
+  required_meta:
+    - episode_id
+    - fps
+    - instruction
+    - camera_intrinsics
+    - camera_extrinsics
+    - depth_unit
+    - renderer
+    - action_layout
+    - units
+    - split
+  required_units:
+    length: m
+    angle: rad
+    depth: m
+    gripper: normalized_0_1_closed_is_1
+  split_manifest: data/splits.json

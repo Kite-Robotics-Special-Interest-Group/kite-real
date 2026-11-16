@@ -1,0 +1,9 @@
+assets/
+third_party/
+outputs/
+data/
+*.pt
+*.safetensors
+__pycache__/
+.pytest_cache/
+.ruff_cache/
