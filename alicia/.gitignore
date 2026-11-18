@@ -1,6 +1,8 @@
 assets/
 third_party/
 outputs/
+logs/
+weights/X-VLA-WidowX/
 data/
 *.pt
 *.safetensors
