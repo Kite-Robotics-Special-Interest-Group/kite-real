@@ -44,7 +44,7 @@ if platform.system() == "Windows":
 from kite.robot.alicia import load_config  # noqa: E402
 from kite.sim.alicia import AliciaSimEnv  # noqa: E402
 from scripts.collect_alicia_episodes import Recorder  # noqa: E402
-from scripts.gamepad_overlay import draw_gamepad  # noqa: E402
+from scripts.gamepad_overlay import GamepadWindow, draw_gamepad  # noqa: E402
 
 # XInput button bit masks.
 DPAD_UP, DPAD_DOWN, DPAD_LEFT, DPAD_RIGHT = 0x0001, 0x0002, 0x0004, 0x0008
@@ -260,6 +260,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-auto-record", action="store_true")
     parser.add_argument("--no-save-prompt", action="store_true", help="完成时直接保存")
     parser.add_argument("--no-wrist-inset", action="store_true")
+    parser.add_argument(
+        "--gamepad-panel",
+        choices=("window", "hud", "off"),
+        default="window",
+        help="手柄面板：独立窗口 / 右上叠加 / 关闭",
+    )
     parser.add_argument("--duration", type=float, default=0.0)
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--seed", type=int, default=0)
@@ -599,6 +605,14 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
         elif key == "c":
             collector.grip = 1.0
 
+    panel_window = None
+    panel_mode = args.gamepad_panel
+    if panel_mode == "window":
+        try:
+            panel_window = GamepadWindow()
+        except Exception as exc:  # noqa: BLE001
+            print(f"gamepad window unavailable: {exc}; using HUD", flush=True)
+            panel_mode = "hud"
     viewer = mujoco.viewer.launch_passive(env.model, env.data, key_callback=key_callback)
     viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
     viewer.cam.lookat = [0.35, 0.0, 0.3]
@@ -667,32 +681,40 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
                         ),
                     ]
                 )
+                if panel_window is not None:
+                    panel_window.update(pad)
             images = []
             if not args.no_wrist_inset:
                 image = env.render("wrist")
                 images.append((mujoco.MjrRect(8, 8, image.shape[1], image.shape[0]), image))
-            panel = draw_gamepad(pad)
-            panel_w, panel_h = panel.shape[1], panel.shape[0]
-            view_w = int(getattr(viewer.viewport, "width", 1280))
-            view_h = int(getattr(viewer.viewport, "height", 720))
-            images.append(
-                (
-                    mujoco.MjrRect(
-                        max(8, view_w - panel_w - 12),
-                        max(8, view_h // 2 - panel_h // 2),
-                        panel_w,
-                        panel_h,
-                    ),
-                    panel,
+            if panel_mode == "hud":
+                panel = draw_gamepad(pad)
+                panel_w, panel_h = panel.shape[1], panel.shape[0]
+                view_w = int(getattr(viewer.viewport, "width", 1280))
+                view_h = int(getattr(viewer.viewport, "height", 720))
+                images.append(
+                    (
+                        mujoco.MjrRect(
+                            max(8, view_w - panel_w - 12),
+                            max(8, view_h // 2 - panel_h // 2),
+                            panel_w,
+                            panel_h,
+                        ),
+                        panel,
+                    )
                 )
-            )
-            viewer.set_images(images)
+            if images:
+                viewer.set_images(images)
+            else:
+                viewer.clear_images()
             viewer.sync()
             remaining = env.control_period - (time.monotonic() - now)
             if remaining > 0.0:
                 time.sleep(remaining)
     finally:
         collector.cancel()
+        if panel_window is not None:
+            panel_window.close()
         viewer.close()
     return 0
 

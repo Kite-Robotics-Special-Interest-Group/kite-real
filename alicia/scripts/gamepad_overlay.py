@@ -110,3 +110,50 @@ def draw_gamepad(pad: Any, width: int = 320, height: int = 200) -> np.ndarray:
     button(220, 67, X, "X", (100, 160, 255))
     button(256, 67, B, "B", (255, 100, 100))
     return np.asarray(image)
+
+
+class GamepadWindow:
+    """Separate Tk window so the controller panel does not cover the scene."""
+
+    def __init__(self) -> None:
+        import tkinter as tk
+
+        from PIL import ImageTk
+
+        self.tk = tk
+        self.ImageTk = ImageTk
+        self.root = tk.Tk()
+        self.root.title("Alicia gamepad")
+        self.root.resizable(False, False)
+        self.root.configure(bg="#101216")
+        self.root.attributes("-topmost", True)
+        self.label = tk.Label(self.root, bd=0, bg="#101216")
+        self.label.pack()
+        self.photo = None
+        self.closed = False
+        self.root.protocol("WM_DELETE_WINDOW", self.close)
+        self.root.update_idletasks()
+        width, height = 320, 200
+        screen_w = self.root.winfo_screenwidth()
+        self.root.geometry(f"{width}x{height}+{max(20, screen_w - width - 36)}+90")
+
+    def update(self, pad: Any) -> None:
+        if self.closed:
+            return
+        try:
+            image = Image.fromarray(draw_gamepad(pad))
+            self.photo = self.ImageTk.PhotoImage(image)
+            self.label.configure(image=self.photo)
+            self.root.update_idletasks()
+            self.root.update()
+        except Exception:  # noqa: BLE001
+            self.close()
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        try:
+            self.root.destroy()
+        except Exception:  # noqa: BLE001
+            pass
