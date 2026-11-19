@@ -44,6 +44,21 @@ python scripts/alicia_xvla_realtime.py \
   --position-offset 0 -0.02 -0.015 --exec-steps 30 --duration 120
 ```
 
+## 手柄遥操作采集
+
+```bash
+# 打开可视化窗口；无输入自动开始，停止输入 2 秒自动保存
+python scripts/alicia_teleop_collect.py --stop-idle 2.0
+
+# 只检查手柄（XInput + winmm fallback）
+python scripts/alicia_teleop_collect.py --self-test
+```
+
+- 左摇杆：base X/Y 平移；右摇杆：Z / yaw
+- RT/LT：夹爪闭合 / 张开；A：开始/保存；B：取消；Back：重置
+- 数据：`outputs/alicia_teleop/<timestamp>/`（action/proprio/obs/meta.json）
+- 无手柄时可用键盘：W/S x、A/D y、Q/E z、Z/X yaw、O/C 夹爪、T 手动录制
+
 ## 当前边界
 
 - rot6d 已对齐官方行交错 `[b1x,b2x,b1y,b2y,b1z,b2z]`；
