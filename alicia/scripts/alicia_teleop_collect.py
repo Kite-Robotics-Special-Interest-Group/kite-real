@@ -217,6 +217,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--frame-every", type=int, default=2)
     parser.add_argument("--success-z", type=float, default=0.34)
     parser.add_argument("--auto-success", action="store_true", help="方块抬升后自动完成")
+    parser.add_argument(
+        "--no-grasp-assist",
+        action="store_true",
+        help="关闭演示用吸附（默认开启，便于手动采集）",
+    )
     parser.add_argument("--no-auto-record", action="store_true")
     parser.add_argument("--no-save-prompt", action="store_true", help="完成时直接保存")
     parser.add_argument("--no-wrist-inset", action="store_true")
@@ -236,11 +241,29 @@ def _episode_dir(root: Path) -> Path:
     return path
 
 
+def _tune_contact(env: AliciaSimEnv) -> None:
+    """Increase contact friction for manual grasping in the vendor MJCF."""
+    model = env.model
+    finger_bodies = {
+        model.body("left_gripper").id,
+        model.body("right_gripper").id,
+    }
+    for geom_id in range(model.ngeom):
+        name = model.geom(geom_id).name
+        body_id = int(model.geom_bodyid[geom_id])
+        if name in ("cube_geom", "table", "pedestal") or (
+            body_id in finger_bodies and model.geom_contype[geom_id]
+        ):
+            model.geom_friction[geom_id] = [3.0, 2.0, 0.1]
+            model.geom_condim[geom_id] = 4
+
+
 class TeleopCollector:
     def __init__(self, env: AliciaSimEnv, args: argparse.Namespace) -> None:
         self.env = env
         self.args = args
         self.gamepad = GamepadReader(args.controller)
+        self.assist = not args.no_grasp_assist
         self.prev_buttons = 0
         self.recorder: Recorder | None = None
         self.episode_dir: Path | None = None
@@ -289,6 +312,7 @@ class TeleopCollector:
             "camera_extrinsics": {"front": "world fixed", "wrist": "link6 +0.06 x"},
             "source": "gamepad_teleop",
             "controller": self.args.controller,
+            "grasp_assist": self.assist,
             "frames": self.frames,
             "split": "train",
             "success": "manual",
@@ -330,6 +354,7 @@ class TeleopCollector:
         self.recorder = None
         self.episode_dir = None
         self.armed = False
+        self.env.detach_cube()
         if self.frames < 5 or episode_dir is None:
             if episode_dir is not None:
                 shutil.rmtree(episode_dir, ignore_errors=True)
@@ -350,6 +375,7 @@ class TeleopCollector:
         self.recorder = None
         self.episode_dir = None
         self.armed = False
+        self.env.detach_cube()
         if episode_dir is not None:
             shutil.rmtree(episode_dir, ignore_errors=True)
         self.cancelled += 1
@@ -402,6 +428,13 @@ class TeleopCollector:
             self.armed = False
         self.env.command_gripper_norm(self.grip)
         self.env.step()
+        if self.assist:
+            cube = self.env.cube_position()
+            if self.grip > 0.5 and cube is not None and not self.env.cube_attached:
+                if float(np.linalg.norm(cube - self.env.eef_pose()[0])) < 0.07:
+                    self.env.attach_cube()
+            elif self.grip < 0.2 and self.env.cube_attached:
+                self.env.detach_cube()
         if self.recorder is not None:
             self.frames += 1
             self.recorder.record(self.grip)
@@ -436,10 +469,11 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
     env = collector.env
     paused = False
     running = True
+    camera_free = True
     started = time.monotonic()
 
     def key_callback(keycode: int) -> None:
-        nonlocal paused, running
+        nonlocal paused, running, camera_free
         key = chr(keycode).lower() if 32 <= keycode < 127 else ""
         if keycode == 256:
             running = False
@@ -452,6 +486,13 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
             collector.finish()
         elif key == "h":
             env.set_target(env.eef_pose()[0])
+        elif key == "v":
+            camera_free = not camera_free
+            if camera_free:
+                viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+            else:
+                viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+                viewer.cam.fixedcamid = env.camera_ids["front"]
         elif key in ("w", "s", "a", "d", "q", "e", "z", "x"):
             step = 0.01
             if key == "w":
@@ -478,8 +519,11 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
             collector.grip = 1.0
 
     viewer = mujoco.viewer.launch_passive(env.model, env.data, key_callback=key_callback)
-    viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
-    viewer.cam.fixedcamid = env.camera_ids["front"]
+    viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+    viewer.cam.lookat = [0.35, 0.0, 0.3]
+    viewer.cam.distance = 1.25
+    viewer.cam.azimuth = 135.0
+    viewer.cam.elevation = -25.0
     last_hud = 0.0
     try:
         while running and viewer.is_running():
@@ -514,7 +558,7 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
                             mujoco.mjtFontScale.mjFONTSCALE_100,
                             mujoco.mjtGridPos.mjGRID_BOTTOMRIGHT,
                             "LS move | RS z/yaw | RT close | LT open",
-                            "A finish/save  B cancel  Back reset",
+                            "mouse orbit/pan/zoom  V camera  A finish/save  B cancel",
                         ),
                     ]
                 )
@@ -539,6 +583,7 @@ def main() -> int:
         return _run_self_test(args)
     config = load_config(args.config)
     env = AliciaSimEnv(config=config, with_task=True, seed=args.seed)
+    _tune_contact(env)
     collector = TeleopCollector(env, args)
     try:
         return _run_viewer(collector, args)
