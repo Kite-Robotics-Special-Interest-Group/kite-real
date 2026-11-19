@@ -1,15 +1,15 @@
 """Alicia-D gamepad teleoperation + automatic demonstration collection.
 
 The viewer shows the vendor Alicia-D MJCF. A gamepad moves the absolute TCP
-target; recording starts on the first meaningful input and stops/saves after a
-short idle period (or with A / Start). B cancels, Back resets the scene.
+target; recording starts on the first meaningful input. Press A / Start when
+the task is done: a popup asks whether to save. B cancels, Back resets.
 
 Windows path uses XInput directly (no extra dependency). Keyboard fallback:
 W/S x, A/D y, Q/E z, Z/X yaw, O/C gripper, Space pause, R reset, T record.
 
 Examples:
     python scripts/alicia_teleop_collect.py
-    python scripts/alicia_teleop_collect.py --no-auto-record --stop-idle 2.0
+    python scripts/alicia_teleop_collect.py --auto-success
     python scripts/alicia_teleop_collect.py --self-test
 """
 
@@ -20,6 +20,7 @@ import ctypes
 import json
 import os
 import platform
+import shutil
 import sys
 import time
 from dataclasses import dataclass
@@ -207,9 +208,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--speed-mps", type=float, default=0.15, help="平移速度 m/s")
     parser.add_argument("--yaw-rps", type=float, default=0.8, help="偏航速度 rad/s")
     parser.add_argument("--deadzone", type=float, default=0.15)
-    parser.add_argument("--stop-idle", type=float, default=2.0, help="无输入多久自动停止")
+    parser.add_argument(
+        "--stop-idle",
+        type=float,
+        default=0.0,
+        help="0=不自动停止；仅保留兼容参数",
+    )
     parser.add_argument("--frame-every", type=int, default=2)
+    parser.add_argument("--success-z", type=float, default=0.34)
+    parser.add_argument("--auto-success", action="store_true", help="方块抬升后自动完成")
     parser.add_argument("--no-auto-record", action="store_true")
+    parser.add_argument("--no-save-prompt", action="store_true", help="完成时直接保存")
     parser.add_argument("--no-wrist-inset", action="store_true")
     parser.add_argument("--duration", type=float, default=0.0)
     parser.add_argument("--self-test", action="store_true")
@@ -241,6 +250,7 @@ class TeleopCollector:
         self.frames = 0
         self.saved = 0
         self.cancelled = 0
+        self.armed = True
         self.last_meta: dict[str, Any] | None = None
 
     def _active(self, pad: GamepadState | None) -> bool:
@@ -260,65 +270,104 @@ class TeleopCollector:
         self.last_input = time.monotonic()
         print(f"REC start {self.episode_dir}", flush=True)
 
-    def stop(self, saved: bool = True) -> None:
+    def _save(self, recorder: Recorder, episode_dir: Path) -> None:
+        recorder.save()
+        meta = {
+            "episode_id": episode_dir.name,
+            "started": episode_dir.name,
+            "instruction": self.args.instruction,
+            "fps": 20,
+            "action_layout": "[ee_xyz(3), rot6d(6), grip(1)]",
+            "rot6d": "interleaved",
+            "units": {"length": "m", "angle": "rad", "gripper": "0_1_closed_is_1"},
+            "renderer": "mujoco",
+            "depth_unit": "none",
+            "camera_intrinsics": {
+                "front": {"width": 224, "height": 224, "fovy_deg": 48},
+                "wrist": {"width": 224, "height": 224, "fovy_deg": 75},
+            },
+            "camera_extrinsics": {"front": "world fixed", "wrist": "link6 +0.06 x"},
+            "source": "gamepad_teleop",
+            "controller": self.args.controller,
+            "frames": self.frames,
+            "split": "train",
+            "success": "manual",
+            "success_z": self.args.success_z,
+        }
+        (episode_dir / "meta.json").write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        self.saved += 1
+        self.last_meta = meta
+        print(f"SAVE {episode_dir} frames={self.frames}", flush=True)
+
+    def _prompt_save(self, episode_dir: Path) -> bool:
+        if self.args.no_save_prompt:
+            return True
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            result = messagebox.askyesno(
+                "示教完成",
+                f"保存本次示教？\n\n{self.frames} 帧\n{episode_dir}",
+                parent=root,
+            )
+            root.destroy()
+            return bool(result)
+        except Exception as exc:  # noqa: BLE001
+            print(f"save prompt failed: {exc}; use --no-save-prompt", flush=True)
+            return True
+
+    def finish(self) -> None:
         if self.recorder is None:
             return
         recorder = self.recorder
         episode_dir = self.episode_dir
         self.recorder = None
         self.episode_dir = None
-        if saved and self.frames >= 5 and episode_dir is not None:
-            recorder.save()
-            meta = {
-                "episode_id": episode_dir.name,
-                "started": episode_dir.name,
-                "instruction": self.args.instruction,
-                "fps": 20,
-                "action_layout": "[ee_xyz(3), rot6d(6), grip(1)]",
-                "rot6d": "interleaved",
-                "units": {"length": "m", "angle": "rad", "gripper": "0_1_closed_is_1"},
-                "renderer": "mujoco",
-                "depth_unit": "none",
-                "camera_intrinsics": {
-                    "front": {"width": 224, "height": 224, "fovy_deg": 48},
-                    "wrist": {"width": 224, "height": 224, "fovy_deg": 75},
-                },
-                "camera_extrinsics": {"front": "world fixed", "wrist": "link6 +0.06 x"},
-                "source": "gamepad_teleop",
-                "controller": self.args.controller,
-                "frames": self.frames,
-                "split": "train",
-                "success": None,
-            }
-            (episode_dir / "meta.json").write_text(
-                json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            self.saved += 1
-            self.last_meta = meta
-            print(f"SAVE {episode_dir} frames={self.frames}", flush=True)
-        else:
+        self.armed = False
+        if self.frames < 5 or episode_dir is None:
+            if episode_dir is not None:
+                shutil.rmtree(episode_dir, ignore_errors=True)
             self.cancelled += 1
-            print("CANCEL episode", flush=True)
-
-    def toggle(self) -> None:
-        if self.recorder is None:
-            self.start()
+            print("CANCEL empty episode", flush=True)
+            return
+        if self._prompt_save(episode_dir):
+            self._save(recorder, episode_dir)
         else:
-            self.stop(saved=True)
+            shutil.rmtree(episode_dir, ignore_errors=True)
+            self.cancelled += 1
+            print(f"DISCARD {episode_dir}", flush=True)
+
+    def cancel(self) -> None:
+        if self.recorder is None:
+            return
+        episode_dir = self.episode_dir
+        self.recorder = None
+        self.episode_dir = None
+        self.armed = False
+        if episode_dir is not None:
+            shutil.rmtree(episode_dir, ignore_errors=True)
+        self.cancelled += 1
+        print("CANCEL episode", flush=True)
 
     def _handle_buttons(self, pad: GamepadState) -> None:
         pressed = pad.buttons & ~self.prev_buttons
         self.prev_buttons = pad.buttons
         if pressed & (A | START):
-            self.toggle()
+            self.finish()
         if pressed & B:
-            self.stop(saved=False)
+            self.cancel()
         if pressed & X:
             self.grip = 0.0
         if pressed & Y:
             self.grip = 1.0
         if pressed & BACK:
-            self.stop(saved=False)
+            self.cancel()
             self.env.reset()
 
     def step(self, pad: GamepadState | None) -> None:
@@ -345,21 +394,25 @@ class TeleopCollector:
             active = True
         if active:
             self.last_input = now
+        else:
+            self.armed = True
         auto = not self.args.no_auto_record
-        if auto and self.recorder is None and active:
+        if auto and self.recorder is None and active and self.armed:
             self.start()
-        if (
-            auto
-            and self.recorder is not None
-            and not active
-            and now - self.last_input > self.args.stop_idle
-        ):
-            self.stop(saved=True)
+            self.armed = False
         self.env.command_gripper_norm(self.grip)
         self.env.step()
         if self.recorder is not None:
             self.frames += 1
             self.recorder.record(self.grip)
+            if self.args.auto_success:
+                cube = self.env.cube_position()
+                if (
+                    cube is not None
+                    and float(cube[2]) > self.args.success_z
+                    and self.env.gripper_norm() > 0.5
+                ):
+                    self.finish()
 
 
 def _run_self_test(args: argparse.Namespace) -> int:
@@ -393,10 +446,10 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
         elif key == " ":
             paused = not paused
         elif key == "r":
-            collector.stop(saved=False)
+            collector.cancel()
             env.reset()
         elif key == "t":
-            collector.toggle()
+            collector.finish()
         elif key == "h":
             env.set_target(env.eef_pose()[0])
         elif key in ("w", "s", "a", "d", "q", "e", "z", "x"):
@@ -461,7 +514,7 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
                             mujoco.mjtFontScale.mjFONTSCALE_100,
                             mujoco.mjtGridPos.mjGRID_BOTTOMRIGHT,
                             "LS move | RS z/yaw | RT close | LT open",
-                            "A rec/save  B cancel  Back reset",
+                            "A finish/save  B cancel  Back reset",
                         ),
                     ]
                 )
@@ -473,7 +526,7 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
             if remaining > 0.0:
                 time.sleep(remaining)
     finally:
-        collector.stop(saved=True)
+        collector.cancel()
         viewer.close()
     return 0
 

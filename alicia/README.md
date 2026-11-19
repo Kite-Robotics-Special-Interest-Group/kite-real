@@ -47,17 +47,20 @@ python scripts/alicia_xvla_realtime.py \
 ## 手柄遥操作采集
 
 ```bash
-# 打开可视化窗口；无输入自动开始，停止输入 2 秒自动保存
-python scripts/alicia_teleop_collect.py --stop-idle 2.0
+# 打开可视化窗口；首次输入自动开始记录
+python scripts/alicia_teleop_collect.py
+
+# 方块抬升后自动判定完成（默认手动 A 完成）
+python scripts/alicia_teleop_collect.py --auto-success
 
 # 只检查手柄（XInput + winmm fallback）
 python scripts/alicia_teleop_collect.py --self-test
 ```
 
 - 左摇杆：base X/Y 平移；右摇杆：Z / yaw
-- RT/LT：夹爪闭合 / 张开；A：开始/保存；B：取消；Back：重置
+- RT/LT：夹爪闭合 / 张开；A/Start：任务完成，弹窗询问是否保存；B：取消；Back：重置
 - 数据：`outputs/alicia_teleop/<timestamp>/`（action/proprio/obs/meta.json）
-- 无手柄时可用键盘：W/S x、A/D y、Q/E z、Z/X yaw、O/C 夹爪、T 手动录制
+- 无手柄时可用键盘：W/S x、A/D y、Q/E z、Z/X yaw、O/C 夹爪、T 完成
 
 ## 当前边界
 
