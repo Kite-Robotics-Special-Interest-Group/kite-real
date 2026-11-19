@@ -626,6 +626,15 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
                 state = env.state()
                 mode = "REC" if collector.recorder is not None else "IDLE"
                 task = collector.current_task
+                if pad is None:
+                    pad_text = "pad: none"
+                else:
+                    pad_text = (
+                        f"LX {pad.lx:+.2f}  LY {pad.ly:+.2f}  "
+                        f"RX {pad.rx:+.2f}  RY {pad.ry:+.2f}  "
+                        f"LT {pad.lt:.2f}  RT {pad.rt:.2f}  "
+                        f"BTN {pad.buttons:#06x}"
+                    )
                 viewer.set_texts(
                     [
                         (
@@ -641,13 +650,19 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
                                 f"tcp {np.round(state.position, 3)} | "
                                 f"err {state.position_error * 1000:.1f} mm"
                             ),
-                            f"grip {collector.grip:.2f} | pad {'on' if pad else 'off'}",
+                            f"grip {collector.grip:.2f} | {'pad on' if pad else 'pad off'}",
                         ),
                         (
                             mujoco.mjtFontScale.mjFONTSCALE_100,
                             mujoco.mjtGridPos.mjGRID_BOTTOMRIGHT,
                             f"task[{collector.task_index}] {task['id']}: {task['zh']}",
-                            "D-pad task | A save | B cancel | LB reset | RB camera",
+                            pad_text,
+                        ),
+                        (
+                            mujoco.mjtFontScale.mjFONTSCALE_100,
+                            mujoco.mjtGridPos.mjGRID_TOPRIGHT,
+                            "D-pad task | A save | B cancel",
+                            "LB reset | RB camera | mouse orbit/zoom",
                         ),
                     ]
                 )
