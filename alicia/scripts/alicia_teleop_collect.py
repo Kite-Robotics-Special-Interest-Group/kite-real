@@ -130,8 +130,36 @@ class WinMMGamepad:
         def axis(value: int) -> float:
             return max(-1.0, min(1.0, (value - 32767.0) / 32767.0))
 
+        raw = int(info.dwButtons)
+        buttons = 0
+        # Map DirectInput button bit order to the XInput masks used by the app.
+        direct_to_xinput = (
+            (0, A),
+            (1, B),
+            (2, X),
+            (3, Y),
+            (4, LB),
+            (5, RB),
+            (6, BACK),
+            (7, START),
+            (8, LEFT_THUMB),
+            (9, RIGHT_THUMB),
+        )
+        for bit, mask in direct_to_xinput:
+            if raw & (1 << bit):
+                buttons |= mask
+        pov = int(info.dwPOV)
+        if pov != 0xFFFF:
+            if pov < 4500 or pov > 31500:
+                buttons |= DPAD_UP
+            if 4500 <= pov < 13500:
+                buttons |= DPAD_RIGHT
+            if 13500 <= pov < 22500:
+                buttons |= DPAD_DOWN
+            if 22500 <= pov <= 31500:
+                buttons |= DPAD_LEFT
         return GamepadState(
-            buttons=int(info.dwButtons),
+            buttons=buttons,
             lx=axis(info.dwXpos),
             ly=axis(info.dwYpos),
             rx=axis(info.dwRpos),
@@ -292,6 +320,7 @@ class TeleopCollector:
         self.saved = 0
         self.cancelled = 0
         self.armed = True
+        self.camera_toggle = False
         self.last_meta: dict[str, Any] | None = None
 
     @property
@@ -434,6 +463,11 @@ class TeleopCollector:
             self.grip = 0.0
         if pressed & Y:
             self.grip = 1.0
+        if pressed & LB:
+            self.cancel()
+            self.env.reset()
+        if pressed & RB:
+            self.camera_toggle = True
         if pressed & BACK:
             self.cancel()
             self.env.reset()
@@ -579,6 +613,14 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
             pad = collector.gamepad.read()
             if not paused:
                 collector.step(pad)
+            if collector.camera_toggle:
+                collector.camera_toggle = False
+                camera_free = not camera_free
+                if camera_free:
+                    viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+                else:
+                    viewer.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+                    viewer.cam.fixedcamid = env.camera_ids["front"]
             if now - last_hud > 0.2:
                 last_hud = now
                 state = env.state()
@@ -605,7 +647,7 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
                             mujoco.mjtFontScale.mjFONTSCALE_100,
                             mujoco.mjtGridPos.mjGRID_BOTTOMRIGHT,
                             f"task[{collector.task_index}] {task['id']}: {task['zh']}",
-                            "D-pad/n-p task | A finish/save | B cancel | V camera",
+                            "D-pad task | A save | B cancel | LB reset | RB camera",
                         ),
                     ]
                 )

@@ -65,8 +65,9 @@ python scripts/alicia_teleop_collect.py --self-test
 
 - 指令标签：`configs/teleop_tasks.yaml`（如“拿起红色方块 / pick up the red block”）；D-pad 左右或键盘 `N/P` 切换，`--task-index` 指定
 - 左摇杆：base X/Y 平移；右摇杆：Z / yaw
-- RT/LT：夹爪闭合 / 张开；A/Start：任务完成，弹窗询问是否保存；B：取消；Back：重置
-- 鼠标：左键旋转、右键平移、滚轮缩放；V 切换 front/free 相机
+- RT/LT：夹爪闭合 / 张开；A/Start：任务完成，弹窗询问是否保存；B：取消
+- LB：取消并重置；RB：切换 free/front 相机；D-pad 左右切指令
+- 鼠标：左键旋转、右键平移、滚轮缩放；V 也可切换相机
 - 接触摩擦已调高；默认开启演示吸附，`--no-grasp-assist` 可关闭
 - 数据：`outputs/alicia_teleop/<timestamp>/`（action/proprio/obs/meta.json）
 - 无手柄时可用键盘：W/S x、A/D y、Q/E z、Z/X yaw、O/C 夹爪、T 完成
