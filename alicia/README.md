@@ -50,6 +50,12 @@ python scripts/alicia_xvla_realtime.py \
 # 打开可视化窗口；首次输入自动开始记录
 python scripts/alicia_teleop_collect.py
 
+# 指定预分配指令（configs/teleop_tasks.yaml 的索引）
+python scripts/alicia_teleop_collect.py --task-index 1
+
+# 保存后自动切到下一条指令
+python scripts/alicia_teleop_collect.py --cycle-tasks
+
 # 方块抬升后自动判定完成（默认手动 A 完成）
 python scripts/alicia_teleop_collect.py --auto-success
 
@@ -57,6 +63,7 @@ python scripts/alicia_teleop_collect.py --auto-success
 python scripts/alicia_teleop_collect.py --self-test
 ```
 
+- 指令标签：`configs/teleop_tasks.yaml`（如“拿起红色方块 / pick up the red block”）；D-pad 左右或键盘 `N/P` 切换，`--task-index` 指定
 - 左摇杆：base X/Y 平移；右摇杆：Z / yaw
 - RT/LT：夹爪闭合 / 张开；A/Start：任务完成，弹窗询问是否保存；B：取消；Back：重置
 - 鼠标：左键旋转、右键平移、滚轮缩放；V 切换 front/free 相机

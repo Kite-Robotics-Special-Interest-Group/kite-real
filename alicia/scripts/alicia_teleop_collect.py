@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -203,7 +204,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Alicia-D 手柄遥操作采集")
     parser.add_argument("--config", default=None)
     parser.add_argument("--out", type=Path, default=Path("outputs/alicia_teleop"))
-    parser.add_argument("--instruction", default="teleoperated pick and place")
+    parser.add_argument(
+        "--task-file", type=Path, default=REPO_ROOT / "configs" / "teleop_tasks.yaml"
+    )
+    parser.add_argument("--task-index", type=int, default=0)
+    parser.add_argument("--cycle-tasks", action="store_true", help="保存后自动切换到下一条指令")
+    parser.add_argument("--instruction", default=None, help="覆盖预分配标签")
     parser.add_argument("--controller", type=int, default=0)
     parser.add_argument("--speed-mps", type=float, default=0.15, help="平移速度 m/s")
     parser.add_argument("--yaw-rps", type=float, default=0.8, help="偏航速度 rad/s")
@@ -229,6 +235,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args()
+
+
+def _load_tasks(path: Path, override: str | None) -> list[dict[str, str]]:
+    if override:
+        return [{"id": "custom", "zh": override, "en": override}]
+    if not path.exists():
+        return [{"id": "pick_red", "zh": "拿起红色方块", "en": "pick up the red block"}]
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    tasks = [task for task in data.get("tasks", []) if task.get("en")]
+    return tasks or [{"id": "pick_red", "zh": "拿起红色方块", "en": "pick up the red block"}]
 
 
 def _episode_dir(root: Path) -> Path:
@@ -264,6 +280,8 @@ class TeleopCollector:
         self.args = args
         self.gamepad = GamepadReader(args.controller)
         self.assist = not args.no_grasp_assist
+        self.tasks = _load_tasks(args.task_file, args.instruction)
+        self.task_index = min(max(0, args.task_index), len(self.tasks) - 1)
         self.prev_buttons = 0
         self.recorder: Recorder | None = None
         self.episode_dir: Path | None = None
@@ -275,6 +293,15 @@ class TeleopCollector:
         self.cancelled = 0
         self.armed = True
         self.last_meta: dict[str, Any] | None = None
+
+    @property
+    def current_task(self) -> dict[str, str]:
+        return self.tasks[self.task_index]
+
+    def next_task(self, delta: int) -> None:
+        self.task_index = (self.task_index + delta) % len(self.tasks)
+        task = self.current_task
+        print(f"TASK {task['id']}: {task['zh']} / {task['en']}", flush=True)
 
     def _active(self, pad: GamepadState | None) -> bool:
         if pad is None:
@@ -291,14 +318,23 @@ class TeleopCollector:
         self.recorder = Recorder(self.env, self.episode_dir, self.args.frame_every)
         self.frames = 0
         self.last_input = time.monotonic()
-        print(f"REC start {self.episode_dir}", flush=True)
+        task = self.current_task
+        print(
+            f"REC start {self.episode_dir} | {task['id']}: {task['zh']} / {task['en']}",
+            flush=True,
+        )
 
     def _save(self, recorder: Recorder, episode_dir: Path) -> None:
         recorder.save()
+        task = self.current_task
         meta = {
             "episode_id": episode_dir.name,
             "started": episode_dir.name,
-            "instruction": self.args.instruction,
+            "instruction": task["en"],
+            "instruction_zh": task.get("zh", task["en"]),
+            "instruction_en": task["en"],
+            "task_id": task.get("id", "custom"),
+            "task_index": self.task_index,
             "fps": 20,
             "action_layout": "[ee_xyz(3), rot6d(6), grip(1)]",
             "rot6d": "interleaved",
@@ -324,6 +360,8 @@ class TeleopCollector:
         self.saved += 1
         self.last_meta = meta
         print(f"SAVE {episode_dir} frames={self.frames}", flush=True)
+        if self.args.cycle_tasks:
+            self.next_task(1)
 
     def _prompt_save(self, episode_dir: Path) -> bool:
         if self.args.no_save_prompt:
@@ -386,6 +424,10 @@ class TeleopCollector:
         self.prev_buttons = pad.buttons
         if pressed & (A | START):
             self.finish()
+        if pressed & DPAD_RIGHT:
+            self.next_task(1)
+        if pressed & DPAD_LEFT:
+            self.next_task(-1)
         if pressed & B:
             self.cancel()
         if pressed & X:
@@ -484,6 +526,10 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
             env.reset()
         elif key == "t":
             collector.finish()
+        elif key == "n":
+            collector.next_task(1)
+        elif key == "p":
+            collector.next_task(-1)
         elif key == "h":
             env.set_target(env.eef_pose()[0])
         elif key == "v":
@@ -537,6 +583,7 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
                 last_hud = now
                 state = env.state()
                 mode = "REC" if collector.recorder is not None else "IDLE"
+                task = collector.current_task
                 viewer.set_texts(
                     [
                         (
@@ -557,8 +604,8 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
                         (
                             mujoco.mjtFontScale.mjFONTSCALE_100,
                             mujoco.mjtGridPos.mjGRID_BOTTOMRIGHT,
-                            "LS move | RS z/yaw | RT close | LT open",
-                            "mouse orbit/pan/zoom  V camera  A finish/save  B cancel",
+                            f"task[{collector.task_index}] {task['id']}: {task['zh']}",
+                            "D-pad/n-p task | A finish/save | B cancel | V camera",
                         ),
                     ]
                 )

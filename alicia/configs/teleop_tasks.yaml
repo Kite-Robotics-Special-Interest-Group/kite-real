@@ -1,0 +1,21 @@
+# 遥操作示教的预分配指令标签。
+# en 用于 X-VLA 训练/推理；zh 用于人工选择和记录。
+tasks:
+  - id: pick_red
+    zh: 拿起红色方块
+    en: pick up the red block
+  - id: place_left
+    zh: 把红色方块放到左侧
+    en: place the red block on the left
+  - id: place_right
+    zh: 把红色方块放到右侧
+    en: place the red block on the right
+  - id: lift_red
+    zh: 抬起红色方块
+    en: lift the red block
+  - id: push_red
+    zh: 推动红色方块
+    en: push the red block
+  - id: home
+    zh: 回到初始位置
+    en: move to the home position
