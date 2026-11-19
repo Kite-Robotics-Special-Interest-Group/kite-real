@@ -44,6 +44,7 @@ if platform.system() == "Windows":
 from kite.robot.alicia import load_config  # noqa: E402
 from kite.sim.alicia import AliciaSimEnv  # noqa: E402
 from scripts.collect_alicia_episodes import Recorder  # noqa: E402
+from scripts.gamepad_overlay import draw_gamepad  # noqa: E402
 
 # XInput button bit masks.
 DPAD_UP, DPAD_DOWN, DPAD_LEFT, DPAD_RIGHT = 0x0001, 0x0002, 0x0004, 0x0008
@@ -666,9 +667,26 @@ def _run_viewer(collector: TeleopCollector, args: argparse.Namespace) -> int:
                         ),
                     ]
                 )
+            images = []
             if not args.no_wrist_inset:
                 image = env.render("wrist")
-                viewer.set_images([(mujoco.MjrRect(8, 8, image.shape[1], image.shape[0]), image)])
+                images.append((mujoco.MjrRect(8, 8, image.shape[1], image.shape[0]), image))
+            panel = draw_gamepad(pad)
+            panel_w, panel_h = panel.shape[1], panel.shape[0]
+            view_w = int(getattr(viewer.viewport, "width", 1280))
+            view_h = int(getattr(viewer.viewport, "height", 720))
+            images.append(
+                (
+                    mujoco.MjrRect(
+                        max(8, view_w - panel_w - 12),
+                        max(8, view_h // 2 - panel_h // 2),
+                        panel_w,
+                        panel_h,
+                    ),
+                    panel,
+                )
+            )
+            viewer.set_images(images)
             viewer.sync()
             remaining = env.control_period - (time.monotonic() - now)
             if remaining > 0.0:
