@@ -71,6 +71,7 @@ python scripts/alicia_teleop_collect.py --self-test
 - 手柄状态默认在**独立窗口**，不遮挡 3D 画面；`--gamepad-panel hud/off` 可切回叠加/关闭
 - 接触摩擦已调高；默认开启演示吸附，`--no-grasp-assist` 可关闭
 - 数据：`outputs/alicia_teleop/<timestamp>/`（action/proprio/obs/meta.json）
+- episode 级划分：`python scripts/make_teleop_split.py --root outputs/alicia_teleop`，写入 `splits.json` 并更新 `meta.split`；长 episode 默认不进 val
 - 无手柄时可用键盘：W/S x、A/D y、Q/E z、Z/X yaw、O/C 夹爪、T 完成
 
 ## 当前边界
